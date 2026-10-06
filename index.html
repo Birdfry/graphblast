@@ -1,0 +1,1746 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>GraphBlast — easy function battle</title>
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<style>
+:root{
+  --bg:#0b1020; --panel:#131a30; --line:#223058; --txt:#e8eefc; --dim:#8fa0c8;
+  --cyan:#22d3ee; --red:#f87171; --green:#4ade80; --orange:#fb923c;
+}
+*{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+body{margin:0;background:radial-gradient(1200px 800px at 50% -10%,#16204a 0%,var(--bg) 60%);color:var(--txt);font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;min-height:100vh;}
+.app{max-width:1080px;margin:0 auto;padding:12px 14px 28px;}
+header.top{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
+header.top h1{font-size:22px;margin:0;letter-spacing:.5px;}
+header.top h1 .blast{color:var(--cyan);}
+.subtitle{color:var(--dim);font-size:13px;flex:1 1 200px;}
+.score{font-size:13px;color:var(--dim);white-space:nowrap;}
+.score b{color:var(--txt);}
+.btn{background:#1c2748;color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:14px;cursor:pointer;}
+.btn:hover{background:#24335c;}
+.turn-banner{text-align:center;font-size:15px;font-weight:600;padding:8px;border-radius:10px;background:var(--panel);border:1px solid var(--line);margin-bottom:10px;min-height:20px;}
+.layout{display:grid;grid-template-columns:1fr;gap:12px;}
+@media(min-width:920px){.layout{grid-template-columns:minmax(0,1fr) 360px;align-items:start;}}
+.board-wrap{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px;}
+canvas#board{display:block;width:100%;aspect-ratio:1/1;border-radius:8px;background:#0a0f22;touch-action:manipulation;}
+.overlay{position:absolute;inset:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(5,8,20,.85);border-radius:8px;text-align:center;padding:20px;}
+.overlay.hidden{display:none;}
+.overlay h2{margin:0 0 8px;font-size:30px;}
+.overlay p{color:var(--dim);margin:0 0 16px;}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px;}
+.expr-row{display:flex;gap:8px;align-items:stretch;}
+.fx{align-self:center;font-weight:700;color:var(--cyan);font-size:18px;white-space:nowrap;}
+#expr{flex:1;min-width:0;background:#0a0f22;border:1px solid var(--line);border-radius:10px;color:var(--txt);font-size:20px;padding:10px 12px;font-family:ui-monospace,Menlo,Consolas,monospace;}
+#fire{background:linear-gradient(135deg,#06b6d4,#3b82f6);border:none;color:#fff;font-weight:800;font-size:17px;border-radius:10px;padding:0 20px;cursor:pointer;white-space:nowrap;}
+#fire:disabled{opacity:.45;cursor:default;}
+#fire:not(:disabled):active{transform:scale(.96);}
+.hint{font-size:13px;min-height:18px;color:var(--dim);}
+.hint.ok{color:var(--green);} .hint.err{color:var(--red);}
+.chips{display:flex;gap:6px;flex-wrap:wrap;}
+.chip{background:#1c2748;border:1px solid var(--line);color:var(--txt);border-radius:999px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:ui-monospace,Menlo,monospace;}
+.chip:hover{background:#24335c;}
+.keypad{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;}
+.key{background:#1a2342;border:1px solid var(--line);color:var(--txt);border-radius:10px;font-size:17px;padding:12px 0;cursor:pointer;font-family:inherit;user-select:none;}
+.key:active{background:#2a3a6e;transform:scale(.95);}
+.key.fn{color:var(--cyan);font-size:15px;}
+.key.op{color:#fbbf24;}
+.key.danger{color:var(--red);}
+.rowline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--dim);}
+.dir-row{display:flex;gap:8px;align-items:center;margin:8px 0 2px;}
+.dir-label{color:var(--dim);font-size:13px;white-space:nowrap;}
+.dirbtn{flex:1;padding:9px 0;border-radius:10px;border:1px solid var(--line);background:#1a2342;color:var(--txt);font-size:14px;cursor:pointer;font-family:inherit;}
+.dirbtn:active{transform:scale(.97);}
+.dirbtn.sel{background:#1d2c5e;border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan) inset;}
+.timer{font-weight:700;color:var(--orange);font-size:14px;margin-left:4px;white-space:nowrap;align-self:center;}
+.timer.low{color:var(--red);}
+select{background:#1c2748;color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:14px;}
+.log{font-size:12.5px;color:var(--dim);display:flex;flex-direction:column;gap:4px;max-height:120px;overflow-y:auto;font-family:ui-monospace,Menlo,monospace;}
+.log .me{color:var(--cyan);}
+.modal{position:fixed;inset:0;background:rgba(3,6,16,.7);display:flex;align-items:center;justify-content:center;padding:18px;z-index:50;}
+.modal.hidden{display:none;}
+.modal .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;max-width:480px;padding:20px;font-size:14.5px;line-height:1.55;}
+.modal .card h3{margin-top:0;}
+.modal .card kbd{background:#0a0f22;border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-family:ui-monospace,monospace;}
+.mp-row{display:flex;gap:8px;margin:10px 0;}
+.mp-row input{flex:1;background:#0a0f22;border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--txt);font-size:14px;}
+#mpName{width:100%;background:#0a0f22;border:1px solid var(--line);border-radius:8px;padding:8px 10px;color:var(--txt);font-size:14px;box-sizing:border-box;}
+#mpBots{background:#0a0f22;border:1px solid var(--line);border-radius:8px;padding:6px;color:var(--txt);font-size:14px;}
+#mpHostCtl{display:flex;gap:12px;align-items:center;margin:10px 0;}
+#mpHostCtl.hidden{display:none;}
+.roomcode{font-size:22px;letter-spacing:4px;color:var(--cyan);}
+.mp-note{font-size:12px;color:var(--dim);}
+#mpPlayers{display:flex;flex-direction:column;gap:6px;margin:10px 0;}
+.mp-player{display:flex;align-items:center;gap:8px;font-size:14px;}
+.mp-dot{width:12px;height:12px;border-radius:50%;display:inline-block;flex:none;}
+body.mp .rowline label{display:none;}
+footer.note{text-align:center;color:var(--dim);font-size:12px;margin-top:14px;}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <h1>Graph<span class="blast">Blast</span></h1>
+    <div class="subtitle">the friendlier Graphwar — your function is your weapon</div>
+    <div class="score" id="scoreLine">You <b id="scoreYou">0</b> &middot; Bots <b id="scoreBot">0</b></div>
+    <button class="btn" id="soundBtn" title="toggle sound">🔊</button>
+    <button class="btn" id="howBtn">How to play</button>
+    <button class="btn" id="mpBtn" title="play with friends">👥 Friends</button>
+    <button class="btn" id="newBtn">New round</button>
+  </header>
+  <div class="turn-banner" id="banner">…</div>
+  <div class="layout">
+    <div class="board-wrap">
+      <canvas id="board"></canvas>
+      <div class="overlay hidden" id="overlay">
+        <h2 id="ovTitle">🎉</h2>
+        <p id="ovSub"></p>
+        <button class="btn" id="againBtn" style="font-size:16px;padding:10px 22px;">Play again</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="expr-row">
+        <span class="fx">f(x)=</span>
+        <input id="expr" placeholder="tap to edit — type or use the keypad" title="click to move the caret, select text, type normally">
+        <button id="fire">🔥 Fire</button>
+      </div>
+      <div class="hint" id="hint">Tap the symbols to build your function — see it drawn live.</div>
+      <div class="dir-row">
+        <span class="dir-label">Shoot:</span>
+        <button id="dirL" class="dirbtn">◀ Left</button>
+        <button id="dirR" class="dirbtn sel">Right ▶</button>
+        <button id="cheatBtn" class="dirbtn" title="load a cheat equation (solo) — in friend mode, clicking = instant loss!">😈 Cheat</button>
+        <span id="turnTimer" class="timer" style="display:none">⏰ 3:00</span>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="keypad" id="keypad"></div>
+      <div class="rowline">
+        <label>Opponents
+          <select id="oppSel"><option>1</option><option selected>2</option><option>3</option></select>
+        </label>
+        <span>&middot; keyboard works too — type &amp; hit Enter</span>
+      </div>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+  <footer class="note">Tip: every tank's coordinates are shown under it. The whole graph is your weapon — the dashed preview shows exactly where it burns.</footer>
+</div>
+<div class="modal hidden" id="howModal">
+  <div class="card">
+    <h3>How to play</h3>
+    <p>🎯 <b>You vs the bots, turn by turn.</b> On your turn, build a function <kbd>f(x)</kbd> with the keypad (or your keyboard) and hit <b>🔥 Fire</b>.</p>
+    <p>💥 A shot launches from <b>your tank's center</b> — your tank is the function's <b>origin (0,0)</b>: the <b>entire graph</b> of your function across the plane is your weapon, burning outward from your tank in <b>both directions</b>. Aim with offsets from your tank — e.g. enemy 3 right and 2 up? Try <kbd>2/3*x</kbd>. If your function is undefined right at the tank (like <kbd>ln(x)</kbd> at x=0), the curve starts at the nearest point where it is defined. Any tank the burning curve touches explodes — one hit kills.</p>
+    <p>🧱 <b>Walls block the burn</b> — the line stops when it hits one (blasting a crater out of it), so arc over them or thread the gaps.</p>
+    <p>👀 The dashed line is a <b>live preview</b> of exactly where your shot will go. Tanks show their coordinates underneath to help you aim.</p>
+    <p>🧱 <b>Blocks</b> litter the board — your line stops when it hits one, blasting a chunk out of it. Arc over them, or smash straight through!</p>
+    <p>⚠️ The bots shoot back with wobbly aim. Last tank standing wins the round.</p>
+    <p>👥 <b>Play with friends:</b> hit the <b>👥 Friends</b> button up top, create a room, and share the 5-letter code — your friend opens the same page and joins. You can even add bots to the mix. ⏱️ In friend matches everyone gets <b>3 minutes</b> per turn — run out of time and your turn is skipped with a "didn't fire" announcement. The 😈 cheat button is disabled in friend matches.</p>
+    <p style="text-align:center"><button class="btn" id="closeHow">Got it</button></p>
+  </div>
+</div>
+<div class="modal hidden" id="mpModal">
+  <div class="card">
+    <h3>👥 Play with friends</h3>
+    <div id="mpMenu">
+      <p>Enter your name, then create a room or join one with a code. Everyone needs internet and this page open.</p>
+      <input id="mpName" maxlength="16" placeholder="Your name">
+      <div class="mp-row">
+        <button class="btn" id="mpCreate">Create room</button>
+      </div>
+      <div class="mp-row">
+        <input id="mpCode" maxlength="5" placeholder="CODE" style="text-transform:uppercase">
+        <button class="btn" id="mpJoin">Join room</button>
+      </div>
+      <div class="hint" id="mpStatus"></div>
+      <p class="mp-note">Share this page + the room code with your friend — they must join <b>before</b> you hit Start (rooms can't be joined mid-game). The player who creates the room hosts it — if the host leaves, the room closes.</p>
+    </div>
+    <div id="mpLobby" class="hidden">
+      <p>Room code: <b id="mpRoomCode" class="roomcode">-----</b></p>
+      <div id="mpPlayers"></div>
+      <div id="mpHostCtl" class="hidden">
+        <label style="font-size:14px">Bots
+          <select id="mpBots">
+            <option value="0">0</option><option value="1">1</option>
+            <option value="2">2</option><option value="3">3</option>
+          </select>
+        </label>
+        <button class="btn" id="mpStart">Start game</button>
+      </div>
+      <div class="mp-row"><button class="btn" id="mpLeave">Leave room</button></div>
+    </div>
+    <p style="text-align:center"><button class="btn" id="mpClose">Close</button></p>
+  </div>
+</div>
+<script>
+'use strict';
+/* ================= math expression parser ================= */
+function tokenize(s){
+  var tokens=[], i=0, n=s.length;
+  function isDig(c){return c>='0'&&c<='9';}
+  while(i<n){
+    var c=s[i];
+    if(c===' '){i++;continue;}
+    if(isDig(c)||c==='.'){
+      var j=i;
+      while(j<n&&(isDig(s[j])||s[j]==='.'))j++;
+      var v=parseFloat(s.slice(i,j));
+      if(isNaN(v))throw new Error('bad number');
+      tokens.push({t:'num',v:v}); i=j; continue;
+    }
+    if(c==='π'){tokens.push({t:'const',v:Math.PI}); i++; continue;}
+    if(c==='√'){tokens.push({t:'func',v:'sqrt'}); i++; continue;}
+    if((c>='a'&&c<='z')||(c>='A'&&c<='Z')){
+      var k=i;
+      while(k<n&&((s[k]>='a'&&s[k]<='z')||(s[k]>='A'&&s[k]<='Z')))k++;
+      var w=s.slice(i,k).toLowerCase(); i=k;
+      if(w==='x')tokens.push({t:'x'});
+      else if(w==='pi')tokens.push({t:'const',v:Math.PI});
+      else if(w==='e')tokens.push({t:'const',v:Math.E});
+      else if(w==='sin'||w==='cos'||w==='tan'||w==='asin'||w==='acos'||w==='atan'||w==='sqrt'||w==='abs'||w==='ln'||w==='log')tokens.push({t:'func',v:w});
+      else throw new Error('unknown "'+w+'"');
+      continue;
+    }
+    if(c==='+'||c==='-'||c==='*'||c==='/'||c==='^'){tokens.push({t:'op',v:c}); i++; continue;}
+    if(c==='('){tokens.push({t:'lparen'}); i++; continue;}
+    if(c===')'){tokens.push({t:'rparen'}); i++; continue;}
+    throw new Error('bad symbol "'+c+'"');
+  }
+  for(var u=0;u<tokens.length;u++){
+    if(tokens[u].t==='op'&&(tokens[u].v==='-'||tokens[u].v==='+')){
+      var p=u===0?null:tokens[u-1];
+      if(!p||p.t==='op'||p.t==='lparen'){
+        if(tokens[u].v==='-')tokens[u]={t:'op',v:'u-'};
+        else{tokens.splice(u,1);u--;}
+      }
+    }
+  }
+  var out=[];
+  for(var m=0;m<tokens.length;m++){
+    var cur=tokens[m], prev=out[out.length-1];
+    if(prev&&(prev.t==='num'||prev.t==='x'||prev.t==='const'||prev.t==='rparen')&&
+       (cur.t==='x'||cur.t==='const'||cur.t==='func'||cur.t==='lparen')){
+      out.push({t:'op',v:'*'});
+    }
+    out.push(cur);
+  }
+  return out;
+}
+var PREC={'+':1,'-':1,'*':2,'/':2,'u-':3,'^':4};
+function toRPN(tokens){
+  var out=[], ops=[];
+  for(var i=0;i<tokens.length;i++){
+    var tk=tokens[i];
+    if(tk.t==='num'||tk.t==='const'||tk.t==='x'){out.push(tk);}
+    else if(tk.t==='func'){ops.push(tk);}
+    else if(tk.t==='op'){
+      if(tk.v==='u-'&&ops.length&&ops[ops.length-1].t==='op'&&ops[ops.length-1].v==='^'){
+        ops.push(tk); /* unary minus binds tighter as the right side of ^ : x^-2 = x^(-2) */
+      }else{
+      while(ops.length){
+        var top=ops[ops.length-1];
+        if(top.t!=='op')break;
+        var right=(tk.v==='^'||tk.v==='u-');
+        if((right&&PREC[top.v]>PREC[tk.v])||(!right&&PREC[top.v]>=PREC[tk.v]))out.push(ops.pop());
+        else break;
+      }
+      ops.push(tk);
+      }
+    }
+    else if(tk.t==='lparen'){ops.push(tk);}
+    else if(tk.t==='rparen'){
+      var found=false;
+      while(ops.length){var o=ops.pop(); if(o.t==='lparen'){found=true;break;} out.push(o);}
+      if(!found)throw new Error('mismatched )');
+      if(ops.length&&ops[ops.length-1].t==='func')out.push(ops.pop());
+    }
+  }
+  while(ops.length){var z=ops.pop(); if(z.t==='lparen'||z.t==='rparen')throw new Error('mismatched ('); out.push(z);}
+  return out;
+}
+function evalRPN(rpn,x){
+  var st=[];
+  for(var i=0;i<rpn.length;i++){
+    var tk=rpn[i];
+    if(tk.t==='num'||tk.t==='const')st.push(tk.v);
+    else if(tk.t==='x')st.push(x);
+    else if(tk.t==='func'){
+      if(!st.length)throw new Error('missing value');
+      var a=st.pop(), r;
+      if(tk.v==='sin')r=Math.sin(a);
+      else if(tk.v==='cos')r=Math.cos(a);
+      else if(tk.v==='tan')r=Math.tan(a);
+      else if(tk.v==='asin')r=Math.asin(a);
+      else if(tk.v==='acos')r=Math.acos(a);
+      else if(tk.v==='atan')r=Math.atan(a);
+      else if(tk.v==='sqrt')r=a<0?NaN:Math.sqrt(a);
+      else if(tk.v==='ln')r=a<=0?NaN:Math.log(a);
+      else if(tk.v==='log')r=a<=0?NaN:Math.log10(a);
+      else r=Math.abs(a);
+      st.push(r);
+    }else{
+      if(tk.v==='u-'){if(!st.length)throw new Error('missing value'); st.push(-st.pop());}
+      else{
+        if(st.length<2)throw new Error('missing value');
+        var b=st.pop(), c=st.pop(), rr;
+        if(tk.v==='+')rr=c+b; else if(tk.v==='-')rr=c-b;
+        else if(tk.v==='*')rr=c*b; else if(tk.v==='/')rr=c/b;
+        else rr=Math.pow(c,b);
+        st.push(rr);
+      }
+    }
+  }
+  if(st.length!==1)throw new Error('incomplete expression');
+  return st[0];
+}
+function compile(expr){
+  var rpn=toRPN(tokenize(expr));
+  if(!rpn.length)throw new Error('empty expression');
+  var f=function(x){return evalRPN(rpn,x);};
+  var pts=[0,1,-1,0.5,2], i;
+  for(i=0;i<pts.length;i++)f(pts[i]);
+  return f;
+}
+/* ================= game state ================= */
+var XMIN=-10,XMAX=10,YMIN=-10,YMAX=10;
+var TANK_R=0.45, HIT_R=0.6;
+var BOT_DEFS=[
+  {name:'SineBot', color:'#f87171'},
+  {name:'Parabola', color:'#4ade80'},
+  {name:'Cosine', color:'#fb923c'}
+];
+var tanks=[], turnIdx=0, phase='aim';
+var missile=null, particles=[], shake=0, gameOverFlag=false, roundSeq=0;
+var scoreYou=0, scoreBot=0;
+var missStreak=0;
+var lastTime=0, muted=false, AC=null;
+
+var canvas=document.getElementById('board'), ctx=canvas.getContext('2d');
+var W=0,H=0,DPR=1;
+var exprInput=document.getElementById('expr'), hintEl=document.getElementById('hint');
+var bannerEl=document.getElementById('banner'), logEl=document.getElementById('log');
+var overlay=document.getElementById('overlay'), ovTitle=document.getElementById('ovTitle'), ovSub=document.getElementById('ovSub');
+var scoreYouEl=document.getElementById('scoreYou'), scoreBotEl=document.getElementById('scoreBot');
+var turnTimerEl=document.getElementById('turnTimer');
+var TURN_SECS=180; /* per-turn time limit in friend matches */
+var oppSel=document.getElementById('oppSel'), fireBtn=document.getElementById('fire');
+var howModal=document.getElementById('howModal');
+
+function resize(){
+  DPR=Math.min(2,window.devicePixelRatio||1);
+  var r=canvas.getBoundingClientRect();
+  W=Math.max(50,r.width); H=Math.max(50,r.height);
+  canvas.width=Math.round(W*DPR); canvas.height=Math.round(H*DPR);
+}
+window.addEventListener('resize',resize);
+function X(x){return (x-XMIN)/(XMAX-XMIN)*W;}
+function Y(y){return H-(y-YMIN)/(YMAX-YMIN)*H;}
+function rnd(a,b){return a+Math.random()*(b-a);}
+function r2(v){return Math.round(v*100)/100;}
+function fmt(v){return (Math.round(v*10)/10).toString();}
+function banner(t){bannerEl.textContent=t;}
+function setFireEnabled(on){fireBtn.disabled=!on;}
+function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+/* ================= sound ================= */
+function ac(){
+  if(!AC){try{AC=new (window.AudioContext||window.webkitAudioContext)();}catch(e){return null;}}
+  if(AC&&AC.state==='suspended')AC.resume();
+  return AC;
+}
+function tone(f0,f1,dur,type,vol){
+  if(muted)return;
+  try{
+    var a=ac(); if(!a)return;
+    var o=a.createOscillator(), g=a.createGain();
+    o.type=type||'sine';
+    o.frequency.setValueAtTime(Math.max(1,f0),a.currentTime);
+    o.frequency.exponentialRampToValueAtTime(Math.max(1,f1),a.currentTime+dur);
+    g.gain.setValueAtTime(vol||0.12,a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,a.currentTime+dur);
+    o.connect(g); g.connect(a.destination);
+    o.start(); o.stop(a.currentTime+dur+0.02);
+  }catch(e){}
+}
+/* ================= sampling & drawing ================= */
+/* Your tank is the function's origin (0,0): the curve starts at the tank's center
+   and traces f outward — point(u) = (tank.x + s*u, tank.y + f(s*u) - f(v0)).
+   If f is undefined right at the tank (e.g. ln(x) at x=0), the curve is anchored
+   at the nearest defined point instead. Throws when nothing is defined. */
+function anchoredPoints(expr,tank,dir){
+  /* Directional ray: the tank is the function's origin, the curve traces outward
+     in the chosen direction. Points that leave the board are kept — the burn
+     continues through them and reappears if the curve comes back. */
+  var fn=compile(expr);
+  var s=dir>0?1:-1;
+  var uMax=s>0?(XMAX-tank.x):(tank.x-XMIN);
+  if(!(uMax>0))uMax=0.5;
+  var raw=[], N=700, i;
+  for(i=0;i<=N;i++){
+    var u=uMax*i/N, v=s*u, y;
+    try{y=fn(v);}catch(e){y=NaN;}
+    if(typeof y!=='number'||isNaN(y)||!isFinite(y)||Math.abs(y)>1e6)raw.push(null);
+    else raw.push({x:tank.x+v, y:y});
+  }
+  var start=0;
+  while(start<raw.length&&!raw[start])start++;
+  if(start>=raw.length)
+    throw new Error("f(x) has no visible points in that direction");
+  var shift=tank.y-raw[start].y;
+  var pts=new Array(raw.length);
+  for(i=0;i<raw.length;i++)pts[i]=raw[i]?{x:raw[i].x,y:raw[i].y+shift}:null;
+  return {pts:pts, start:start, step:uMax/N};
+}
+function inRegion(p){
+  return !!p&&p.x>=XMIN&&p.x<=XMAX&&p.y>=YMIN&&p.y<=YMAX;
+}
+/* ================= destructible blocks ================= */
+var blocks=[];
+var CELL=0.5, BLAST_R=0.85;
+/* Placement vs. "eyeball" lines: retry tank+wall layout a few times and keep the
+   one with the fewest trivial linear kills (slopes 0, ±0.5, ±1, ±2), so players
+   reach for curves instead of y=x. */
+var NICE_SLOPES=[-2,-1,-0.5,0,0.5,1,2];
+function segBlockedByWalls(x1,y1,x2,y2){
+  for(var b=0;b<blocks.length;b++){
+    var bl=blocks[b], m=0.15;
+    var x0=bl.cx-bl.w/2-m, x1r=bl.cx+bl.w/2+m;
+    var y0=bl.cy-bl.h/2-m, y1r=bl.cy+bl.h/2+m;
+    var dx=x2-x1, dy=y2-y1, tmin=0, tmax=1;
+    var ok=true, ta, tb, tc, td, tmp;
+    if(Math.abs(dx)<1e-9){ if(x1<x0||x1>x1r)ok=false; }
+    else{
+      ta=(x0-x1)/dx; tb=(x1r-x1)/dx;
+      if(ta>tb){tmp=ta;ta=tb;tb=tmp;}
+      if(ta>tmin)tmin=ta; if(tb<tmax)tmax=tb;
+      if(tmin>tmax)ok=false;
+    }
+    if(ok){
+      if(Math.abs(dy)<1e-9){ if(y1<y0||y1>y1r)ok=false; }
+      else{
+        tc=(y0-y1)/dy; td=(y1r-y1)/dy;
+        if(tc>td){tmp=tc;tc=td;td=tmp;}
+        if(tc>tmin)tmin=tc; if(td<tmax)tmax=td;
+        if(tmin>tmax)ok=false;
+      }
+    }
+    if(ok)return true;
+  }
+  return false;
+}
+function niceLinearKills(){
+  var kills=0;
+  for(var i=0;i<tanks.length;i++){
+    for(var j=0;j<tanks.length;j++){
+      if(i===j)continue;
+      var S=tanks[i], T=tanks[j];
+      for(var s=0;s<NICE_SLOPES.length;s++){
+        var sl=NICE_SLOPES[s];
+        var perp=Math.abs(sl*(T.x-S.x)-(T.y-S.y))/Math.sqrt(sl*sl+1);
+        if(perp<HIT_R){
+          /* foot of perpendicular: the burn must reach it unblocked */
+          var fx=(T.x+sl*(T.y-S.y)+sl*sl*S.x)/(1+sl*sl);
+          var fy=S.y+sl*(fx-S.x);
+          if(!segBlockedByWalls(S.x,S.y,fx,fy)){kills++;break;}
+        }
+      }
+    }
+  }
+  return kills;
+}
+function placeAll(){
+  var bestK=Infinity, bestT=null, bestB=null;
+  for(var tries=0;tries<12;tries++){
+    placeTanks(); placeBlocks();
+    var k=niceLinearKills();
+    if(k<bestK){
+      bestK=k;
+      bestT=tanks.map(function(t){return {x:t.x,y:t.y};});
+      bestB=blocks;
+      if(k===0)break;
+    }
+  }
+  for(var i=0;i<tanks.length;i++){tanks[i].x=bestT[i].x;tanks[i].y=bestT[i].y;}
+  blocks=bestB;
+}
+function placeBlocks(){
+  blocks=[];
+  var specs=[{w:3.5,h:2},{w:2.5,h:2.5},{w:4,h:1.5},{w:3,h:3},{w:2,h:2}];
+  /* 4 or 5 walls per round, in random order */
+  for(var si=specs.length-1;si>0;si--){
+    var sj=Math.floor(Math.random()*(si+1)), tmp=specs[si];
+    specs[si]=specs[sj]; specs[sj]=tmp;
+  }
+  var count=4+Math.floor(Math.random()*2);
+  for(var s=0;s<count;s++){
+    var w=specs[s].w, h=specs[s].h, placed=false;
+    for(var tries=0;tries<40&&!placed;tries++){
+      var cx=rnd(-9+w/2,9-w/2), cy=rnd(-7+h/2,7-h/2);
+      var ok=true, ti, k;
+      for(ti=0;ti<tanks.length;ti++){
+        var t=tanks[ti];
+        if(Math.abs(t.x-cx)<w/2+1.6&&Math.abs(t.y-cy)<h/2+1.6){ok=false;break;}
+      }
+      if(ok)for(k=0;k<blocks.length;k++){
+        var b=blocks[k];
+        if(Math.abs(b.cx-cx)<(b.w+w)/2+1.2&&Math.abs(b.cy-cy)<(b.h+h)/2+1.2){ok=false;break;}
+      }
+      if(ok){
+        var nx=Math.max(2,Math.round(w/CELL)), ny=Math.max(2,Math.round(h/CELL));
+        var cells=[], j, i;
+        for(j=0;j<ny;j++){cells.push([]);for(i=0;i<nx;i++)cells[j].push(true);}
+        blocks.push({cx:r2(cx),cy:r2(cy),w:nx*CELL,h:ny*CELL,nx:nx,ny:ny,cells:cells});
+        placed=true;
+      }
+    }
+  }
+}
+/* live block cell containing (x,y), or null */
+function cellAt(x,y){
+  for(var k=0;k<blocks.length;k++){
+    var b=blocks[k];
+    var lx=x-(b.cx-b.w/2), ly=y-(b.cy-b.h/2);
+    if(lx<0||ly<0||lx>=b.w||ly>=b.h)continue;
+    var i=Math.floor(lx/CELL), j=Math.floor(ly/CELL);
+    if(i>=0&&j>=0&&i<b.nx&&j<b.ny&&b.cells[j][i])return {b:b,i:i,j:j};
+  }
+  return null;
+}
+/* knock out the cells around an impact point; returns cells destroyed */
+function blastBlock(x,y){
+  var R2=BLAST_R*BLAST_R, n=0;
+  for(var k=0;k<blocks.length;k++){
+    var b=blocks[k];
+    for(var j=0;j<b.ny;j++)for(var i=0;i<b.nx;i++){
+      if(!b.cells[j][i])continue;
+      var ccx=b.cx-b.w/2+(i+0.5)*CELL, ccy=b.cy-b.h/2+(j+0.5)*CELL;
+      var dx=ccx-x, dy=ccy-y;
+      if(dx*dx+dy*dy<=R2){b.cells[j][i]=false;n++;}
+    }
+  }
+  return n;
+}
+function drawBlocks(){
+  for(var k=0;k<blocks.length;k++){
+    var b=blocks[k];
+    for(var j=0;j<b.ny;j++)for(var i=0;i<b.nx;i++){
+      if(!b.cells[j][i])continue;
+      var x0=b.cx-b.w/2+i*CELL, y0=b.cy-b.h/2+j*CELL;
+      var sx=X(x0), sy=Y(y0+CELL), wpx=X(x0+CELL)-sx, hpx=Y(y0)-sy;
+      ctx.fillStyle=(i+j)%2?'#44547c':'#3a4a6e';
+      ctx.fillRect(sx+0.5,sy+0.5,Math.max(1,wpx-1),Math.max(1,hpx-1));
+    }
+  }
+}
+function blockLog(tank){
+  var div=document.createElement('div');
+  var who=tank.isPlayer?'<span class="me"><b>You</b></span>':'<b>'+escapeHtml(tank.name)+'</b>';
+  div.innerHTML=who+' smashed a block 🧱';
+  logEl.insertBefore(div,logEl.firstChild);
+  while(logEl.children.length>6)logEl.removeChild(logEl.lastChild);
+}
+/* Where the burn stops: first sample that leaves the board region or smacks a block. */
+/* Burn: from the tank outward in the chosen direction. The burn continues
+   through out-of-board points and gaps — if the curve comes back into the
+   board it reappears and keeps shooting. Walls block it. */
+/* Check if the line segment a->b passes through any wall cell.
+   Subdivides the segment so steep curves can't jump over thin walls
+   between sample points. */
+function segHitsWall(a,b){
+  if(!a||!b)return false;
+  var steps=8, s, t, x, y;
+  for(s=0;s<=steps;s++){
+    t=s/steps;
+    x=a.x+(b.x-a.x)*t; y=a.y+(b.y-a.y)*t;
+    if(x>=XMIN&&x<=XMAX&&y>=YMIN&&y<=YMAX&&cellAt(x,y))return true;
+  }
+  return false;
+}
+function burnEnd(pts,start){
+  var i=start, n=pts.length, kind='edge';
+  var prev=pts[start];
+  while(i<n-1){
+    var p=pts[i+1];
+    if(!p||!prev){prev=p;i++;continue;}
+    if(segHitsWall(prev,p)){kind='block';i++;break;}
+    prev=p; i++;
+  }
+  return {end:i,kind:kind};
+}
+/* Shot direction: 1 = right, -1 = left. Picked before firing. */
+var shotDir=1;
+function setDir(d){
+  shotDir=d;
+  document.getElementById('dirL').classList.toggle('sel',d<0);
+  document.getElementById('dirR').classList.toggle('sel',d>0);
+}
+function draw(){
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  ctx.clearRect(0,0,W,H);
+  ctx.save();
+  if(shake>0)ctx.translate((Math.random()-0.5)*shake,(Math.random()-0.5)*shake);
+  var g;
+  ctx.lineWidth=1;
+  for(g=Math.ceil(XMIN);g<=XMAX;g++){
+    ctx.strokeStyle=g===0?'#3b4d85':'#182244';
+    ctx.beginPath();ctx.moveTo(X(g),0);ctx.lineTo(X(g),H);ctx.stroke();
+  }
+  for(g=Math.ceil(YMIN);g<=YMAX;g++){
+    ctx.strokeStyle=g===0?'#3b4d85':'#182244';
+    ctx.beginPath();ctx.moveTo(0,Y(g));ctx.lineTo(W,Y(g));ctx.stroke();
+  }
+  ctx.fillStyle='#5b6b96';ctx.font='10px system-ui';ctx.textAlign='center';
+  for(var tx=-10;tx<=10;tx+=2){if(tx!==0)ctx.fillText(tx,X(tx),Y(0)+12);}
+  ctx.textAlign='left';
+  for(var ty=-10;ty<=10;ty+=2){if(ty!==0)ctx.fillText(ty,X(0)+4,Y(ty)+3);}
+  drawBlocks();
+  drawPreview();
+  for(var i=0;i<tanks.length;i++)drawTank(tanks[i]);
+  drawMissile();
+  drawParticles();
+  ctx.restore();
+}
+function drawPreview(){
+  if(phase!=='aim'||!tanks.length)return;
+  var s=exprInput.value.trim(); if(!s)return;
+  var ap; try{ap=anchoredPoints(s,tanks[turnIdx],shotDir);}catch(e){return;}
+  var be=burnEnd(ap.pts,ap.start), end=be.end, pts=ap.pts;
+  ctx.strokeStyle=tanks[turnIdx].color;
+  ctx.lineWidth=2.5;ctx.setLineDash([7,6]);ctx.globalAlpha=0.85;
+  ctx.beginPath();
+  var started=false;
+  for(var i=ap.start;i<=end;i++){
+    var p=pts[i];
+    if(!p||!inRegion(p)){started=false;continue;}
+    var sx=X(p.x), sy=Y(p.y);
+    if(!started){ctx.moveTo(sx,sy);started=true;}else ctx.lineTo(sx,sy);
+  }
+  ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+  var sp=pts[ap.start];
+  if(sp){
+    ctx.fillStyle='#fff';
+    ctx.beginPath();ctx.arc(X(sp.x),Y(sp.y),5,0,Math.PI*2);ctx.fill();
+  }
+}
+function drawTank(t){
+  var sx=X(t.x), sy=Y(t.y), r=TANK_R/(XMAX-XMIN)*W;
+  if(!t.alive){
+    ctx.strokeStyle='#4b5878';ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(sx-r*0.6,sy-r*0.6);ctx.lineTo(sx+r*0.6,sy+r*0.6);
+    ctx.moveTo(sx+r*0.6,sy-r*0.6);ctx.lineTo(sx-r*0.6,sy+r*0.6);
+    ctx.stroke();
+    return;
+  }
+  ctx.fillStyle=t.color;
+  ctx.beginPath();ctx.arc(sx,sy,r,0,Math.PI*2);ctx.fill();
+  ctx.lineWidth=2.5;ctx.strokeStyle='rgba(0,0,0,.45)';ctx.stroke();
+  ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.beginPath();ctx.arc(sx-r*0.3,sy-r*0.3,r*0.35,0,Math.PI*2);ctx.fill();
+  if(phase!=='over'&&tanks[turnIdx]===t){
+    ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.setLineDash([5,4]);
+    ctx.beginPath();ctx.arc(sx,sy,r+5,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+  }
+  ctx.fillStyle='#dbe4ff';ctx.font='bold 11px system-ui';ctx.textAlign='center';
+  ctx.fillText(t.name,sx,sy-r-7);
+  ctx.fillStyle='#8fa0c8';ctx.font='10px system-ui';
+  ctx.fillText('('+fmt(t.x)+', '+fmt(t.y)+')',sx,sy+r+13);
+}
+function drawMissile(){
+  if(!missile)return;
+  var m=missile, i, p, sx, sy;
+  ctx.strokeStyle=m.color;ctx.lineWidth=4;ctx.lineCap='round';ctx.globalAlpha=0.9;
+  ctx.beginPath();
+  var started=false;
+  for(i=m.start;i<=m.pos;i++){
+    p=m.pts[i];
+    if(!p||!inRegion(p)){started=false;continue;}
+    sx=X(p.x);sy=Y(p.y);
+    if(!started){ctx.moveTo(sx,sy);started=true;}else ctx.lineTo(sx,sy);
+  }
+  ctx.stroke();ctx.globalAlpha=1;
+  var cur=m.pts[m.pos];
+  if(cur&&inRegion(cur)){
+    var cx=X(cur.x), cy=Y(cur.y);
+    if(cy>-20&&cy<H+20){
+      ctx.fillStyle='#fff';
+      ctx.beginPath();ctx.arc(cx,cy,6,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle=m.color;
+      ctx.beginPath();ctx.arc(cx,cy,3.5,0,Math.PI*2);ctx.fill();
+    }
+  }
+}
+function drawParticles(){
+  for(var i=0;i<particles.length;i++){
+    var p=particles[i];
+    ctx.globalAlpha=Math.max(0,p.life/p.max);
+    ctx.fillStyle=p.color;
+    ctx.beginPath();ctx.arc(X(p.x),Y(p.y),3.2,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1;
+}
+function explode(x,y,color){
+  for(var i=0;i<26;i++){
+    var a=Math.random()*Math.PI*2, sp=rnd(2,9);
+    particles.push({x:x,y:y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:rnd(0.4,1),max:1,color:Math.random()<0.5?color:'#ffd166'});
+  }
+}
+/* ================= game flow ================= */
+function update(dt){
+  if(shake>0)shake=Math.max(0,shake-dt*28);
+  for(var i=particles.length-1;i>=0;i--){
+    var p=particles[i];
+    p.life-=dt;
+    if(p.life<=0){particles.splice(i,1);continue;}
+    p.x+=p.vx*dt; p.y+=p.vy*dt; p.vy-=6*dt; p.vx*=0.985; p.vy*=0.985;
+  }
+  if(missile&&!gameOverFlag){
+    var m=missile;
+    if(m.grace>0)m.grace-=dt;
+    var perStep=m.step||((XMAX-XMIN)/700);
+    var steps=Math.max(1,Math.ceil(dt*11/perStep));
+    for(var s=0;s<steps;s++){
+      if(m.pos>=m.end)break;
+      var c=m.pts[m.pos], d2=m.pts[m.pos+1];
+      m.pos++;
+      if(c&&d2){
+        /* only hit-check while the segment is on the board */
+        if(inRegion(c)||inRegion(d2))checkSeg(c,d2,m);
+      }
+      if(gameOverFlag)break;
+    }
+    if(m.pos>=m.end){
+      if(m.endKind==='block'&&!m.blasted){
+        m.blasted=true;
+        var ip=m.pts[m.end];
+        if(ip){
+          blastBlock(ip.x,ip.y);
+          explode(ip.x,ip.y,'#8fa0c8');
+          shake=Math.max(shake,5);
+          tone(200,70,0.25,'triangle',0.15);
+          blockLog(m.tank);
+        }
+      }
+      endFlight();
+    }
+  }
+}
+function checkSeg(a,b,m){
+  var dx=b.x-a.x, dy=b.y-a.y;
+  var len=Math.sqrt(dx*dx+dy*dy);
+  var n=Math.max(1,Math.ceil(len/0.15));
+  for(var k=1;k<=n;k++){
+    var px=a.x+dx*k/n, py=a.y+dy*k/n;
+    for(var t=0;t<tanks.length;t++){
+      var tank=tanks[t];
+      if(!tank.alive)continue;
+      if(tank===m.tank&&m.grace>0)continue;
+      var ddx=px-tank.x, ddy=py-tank.y;
+      if(ddx*ddx+ddy*ddy<HIT_R*HIT_R){
+        killTank(tank,px,py,m);
+        if(gameOverFlag)return;
+      }
+    }
+  }
+}
+function killTank(tank,hx,hy,m){
+  tank.alive=false;
+  explode(hx,hy,tank.color);
+  missStreak=0;
+  shake=10;
+  tone(160,30,0.4,'square',0.18);
+  var alive=tanks.filter(function(t){return t.alive;});
+  if(alive.length<=1){
+    gameOverFlag=true;
+    var winner=alive[0]||null, seq=roundSeq;
+    banner('💥 '+(tank.isPlayer?'You were hit!':tank.name+' destroyed!'));
+    if(mode==='mp'){
+      setTimeout(function(){if(seq===roundSeq&&mode==='mp'&&mp.isHost)mpAfterFlight();},900);
+    }else setTimeout(function(){if(seq===roundSeq)endGame(winner);},900);
+  }else{
+    banner('💥 '+(tank.isPlayer?'You were hit!':tank.name+' destroyed!')+' — '+(m?m.tank.name:'')+' scores');
+  }
+}
+function fireShot(tank,expr,dir){
+  mpClearTurnTimer();
+  var ap=anchoredPoints(expr,tank,dir);
+  var be=burnEnd(ap.pts,ap.start);
+  missile={tank:tank,pts:ap.pts,start:ap.start,pos:ap.start,
+           end:be.end,endKind:be.kind,step:ap.step,
+           color:tank.color,grace:0.45};
+  phase='flying';
+  setFireEnabled(false);
+  tone(250,900,0.18,'sawtooth',0.06);
+  addLog(tank,expr);
+  return true;
+}
+function endFlight(){
+  missile=null;
+  if(mode==='mp'){
+    if(mp.isHost)mpAfterFlight();
+    return;
+  }
+  if(gameOverFlag||phase==='over')return;
+  missStreak++;
+  if(missStreak>=30){
+    missStreak=0;
+    newRound();
+    banner('💨 Stalemate — 30 shots, no hits. Fresh round, fresh luck!');
+    return;
+  }
+  var n=tanks.length;
+  for(var k=1;k<=n;k++){
+    var idx=(turnIdx+k)%n;
+    if(tanks[idx].alive){turnIdx=idx;break;}
+  }
+  var t=tanks[turnIdx];
+  if(t.isPlayer){
+    phase='aim';
+    exprInput.value='';
+   
+    updateHint();
+    banner('🎯 Your turn — build a function and fire!');
+    setFireEnabled(true);
+  }else{
+    phase='flying';
+    banner('🤖 '+t.name+' is aiming…');
+    setFireEnabled(false);
+    var seq=roundSeq;
+    setTimeout(function(){
+      if(seq!==roundSeq)return;
+      if(tanks.indexOf(t)<0||!t.alive||phase==='over')return;
+      botFire(t);
+    },1000);
+  }
+}
+function endGame(winner){
+  phase='over';
+  missile=null;
+  setFireEnabled(false);
+  if(winner){
+    if(winner.isPlayer){scoreYou++; ovTitle.textContent='🎉 You win!';}
+    else{scoreBot++; ovTitle.textContent='💥 '+winner.name+' wins';}
+    ovSub.textContent='Last tank standing on the battlefield.';
+  }else{
+    ovTitle.textContent='💥 Everybody exploded!';
+    ovSub.textContent='No tanks left standing. Impressive, honestly.';
+  }
+  scoreYouEl.textContent=scoreYou;
+  scoreBotEl.textContent=scoreBot;
+  overlay.classList.remove('hidden');
+  banner('🏁 Round over');
+  tone(523,523,0.12,'sine',0.1);
+  setTimeout(function(){tone(659,659,0.12,'sine',0.1);},150);
+  setTimeout(function(){tone(784,784,0.28,'sine',0.1);},300);
+}
+function placeTanks(){
+  for(var i=0;i<tanks.length;i++){
+    var ok=false, tries=0, x=0, y=0;
+    while(!ok&&tries<400){
+      tries++;
+      x=rnd(-9,9); y=rnd(-8,8); ok=true;
+      for(var j=0;j<i;j++){
+        var dx=x-tanks[j].x, dy=y-tanks[j].y;
+        if(dx*dx+dy*dy<4.5*4.5){ok=false;break;}
+      }
+    }
+    tanks[i].x=r2(x); tanks[i].y=r2(y);
+  }
+}
+function newRound(){
+  if(mode==='mp'){
+    if(mp.isHost){mpStartRound();}
+    else banner('Only the host can restart the round.');
+    return;
+  }
+  roundSeq++;
+  var nOpp=parseInt(oppSel.value,10)||2;
+  tanks=[{name:'You',color:'#22d3ee',x:0,y:0,alive:true,isPlayer:true}];
+  for(var i=0;i<nOpp;i++){
+    var d=BOT_DEFS[i%BOT_DEFS.length];
+    tanks.push({name:d.name,color:d.color,x:0,y:0,alive:true,isPlayer:false});
+  }
+  placeAll();
+  turnIdx=0; phase='aim';
+  missile=null; particles=[]; gameOverFlag=false; missStreak=0;
+  exprInput.value=''; updateHint();
+  logEl.innerHTML='';
+  overlay.classList.add('hidden');
+  banner('🎯 Your turn — build a function and fire!');
+  setFireEnabled(true);
+}
+/* ================= bot AI ================= */
+function botChoose(t){
+  /* The bot picks a foe and shoots toward it. The tank is the function's origin:
+     point(u) = (t.x + s*u, t.y + f(s*u) - f(0)), so build f with f(0)=0 and
+     f(dx)=dy to send the curve through the target.
+     Smart upgrade: the bot test-fires candidates in its head using the exact
+     same simulation as real shots, so it arcs over blocks and only fires shots
+     that reach the target. A tunable wobble keeps it beatable. */
+  if(Math.random()<BOT_SILLY_P)return {expr:hopeful(t),dir:Math.random()<0.5?-1:1};
+  var foes=tanks.filter(function(x){return x.alive&&x!==t&&Math.abs(x.x-t.x)>0.5;});
+  if(!foes.length)return {expr:hopeful(t),dir:Math.random()<0.5?-1:1};
+  foes.sort(function(a,b){return Math.abs(a.x-t.x)-Math.abs(b.x-t.x);});
+  for(var fi=0;fi<foes.length;fi++){
+    var f=foes[fi];
+    var dx=f.x-t.x, dir=dx>0?1:-1;
+    var m0=(f.y-t.y+rnd(-0.4,0.4))/dx;
+    var arcs=[0,-0.15,-0.4,-0.8];
+    for(var ai=0;ai<arcs.length;ai++){
+      if(botSimHits(t,f,botFmtShot(m0,arcs[ai],dx),dir)){
+        /* shape verified — now the bot's hand wobbles on execution */
+        var m=m0+(Math.random()<BOT_WOBBLE_P?rnd(-BOT_WOBBLE_M,BOT_WOBBLE_M):0);
+        return {expr:botFmtShot(m,arcs[ai],dx),dir:dir};
+      }
+    }
+  }
+  var f0=foes[0], dx0=f0.x-t.x;
+  return {expr:r2((f0.y-t.y)/dx0)+'*x',dir:dx0>0?1:-1};
+}
+var BOT_WOBBLE_P=0.45, BOT_WOBBLE_M=0.35, BOT_SILLY_P=0.12;
+function botFmtShot(m,A,dx){
+  var e=r2(m)+'*x';
+  if(A)e+=(A<0?'':'+')+r2(A)+'*x*(x-('+r2(dx)+'))';
+  return e;
+}
+/* head-simulation: would this shot's burn pass within HIT_R of the foe? */
+function botSimHits(t,f,expr,dir){
+  var ap;
+  try{ap=anchoredPoints(expr,t,dir);}catch(e){return false;}
+  var be=burnEnd(ap.pts,ap.start);
+  for(var i=ap.start;i<=be.end;i++){
+    var p=ap.pts[i]; if(!p)continue;
+    var ddx=p.x-f.x, ddy=p.y-f.y;
+    if(ddx*ddx+ddy*ddy<HIT_R*HIT_R)return true;
+  }
+  return false;
+}
+function hopeful(t){
+  var r=Math.random();
+  if(r<0.4)return ''+r2(rnd(-8,8));
+  if(r<0.7)return r2(rnd(-0.3,0.3))+'*x^2+'+r2(rnd(-6,6));
+  return r2(rnd(1,4))+'*sin('+r2(rnd(0.5,2))+'*x)';
+}
+function botFire(t){
+  if(phase==='over')return;
+  var c=botChoose(t);
+  exprInput.value=c.expr;
+  updateHint();
+  try{fireShot(t,c.expr,c.dir);}
+  catch(e){try{fireShot(t,'0',c.dir);}catch(e2){endFlight();}}
+}
+/* ================= input: keypad, presets, keyboard ================= */
+var KEYS=[
+  [{t:'x',v:'x'},{t:'(',v:'('},{t:')',v:')'},{t:'⌫',a:'back',c:'danger'},{t:'C',a:'clear',c:'danger'}],
+  [{t:'7',v:'7'},{t:'8',v:'8'},{t:'9',v:'9'},{t:'÷',v:'/',c:'op'},{t:'^',v:'^',c:'op'}],
+  [{t:'4',v:'4'},{t:'5',v:'5'},{t:'6',v:'6'},{t:'×',v:'*',c:'op'},{t:'√',v:'√(',c:'fn'}],
+  [{t:'1',v:'1'},{t:'2',v:'2'},{t:'3',v:'3'},{t:'−',v:'-',c:'op'},{t:'π',v:'π',c:'fn'}],
+  [{t:'0',v:'0'},{t:'.',v:'.'},{t:'+',v:'+',c:'op'},{t:'e',v:'e',c:'fn'},{t:'x²',v:'x^2',c:'fn'}],
+  [{t:'sin',v:'sin(',c:'fn'},{t:'cos',v:'cos(',c:'fn'},{t:'tan',v:'tan(',c:'fn'},{t:'|x|',v:'abs(',c:'fn'},{t:'1/(',v:'1/(',c:'fn'}],
+  [{t:'ln',v:'ln(',c:'fn'},{t:'log',v:'log(',c:'fn'},{t:'asin',v:'asin(',c:'fn'},{t:'acos',v:'acos(',c:'fn'},{t:'atan',v:'atan(',c:'fn'}]
+];
+function buildKeypad(){
+  var pad=document.getElementById('keypad');
+  KEYS.forEach(function(row){
+    row.forEach(function(k){
+      var b=document.createElement('button');
+      b.className='key'+(k.c?' '+k.c:'');
+      b.textContent=k.t;
+      b.addEventListener('click',function(){
+        if(k.a==='back')backspace();
+        else if(k.a==='clear')clearExpr();
+        else insertText(k.v);
+      });
+      pad.appendChild(b);
+    });
+  });
+}
+function insertText(s){
+  if(phase!=='aim')return;
+  var el=exprInput, st=el.selectionStart, en=el.selectionEnd;
+  if(st==null||st===undefined){el.value+=s;}
+  else{
+    el.value=el.value.slice(0,st)+s+el.value.slice(en);
+    el.selectionStart=el.selectionEnd=st+s.length;
+  }
+  updateHint();
+}
+function backspace(){
+  if(phase!=='aim')return;
+  var el=exprInput, st=el.selectionStart, en=el.selectionEnd;
+  if(st==null||st===undefined){el.value=el.value.slice(0,-1);}
+  else if(st!==en){
+    el.value=el.value.slice(0,st)+el.value.slice(en);
+    el.selectionStart=el.selectionEnd=st;
+  }else if(st>0){
+    el.value=el.value.slice(0,st-1)+el.value.slice(en);
+    el.selectionStart=el.selectionEnd=st-1;
+  }
+  updateHint();
+}
+function clearExpr(){if(phase!=='aim')return; exprInput.value=''; updateHint();}
+function updateHint(){
+  var s=exprInput.value.trim();
+  if(!s){hintEl.textContent='Tap the symbols to build your function — see it drawn live.';hintEl.className='hint';return;}
+  try{
+    if(phase==='aim'&&tanks.length)anchoredPoints(s,tanks[turnIdx],shotDir);
+    else compile(s);
+    hintEl.textContent='✓ looks good — the dashed line is exactly where it burns';
+    hintEl.className='hint ok';
+  }
+  catch(e){hintEl.textContent='✗ '+e.message;hintEl.className='hint err';}
+}
+function doFire(){
+  if(phase!=='aim')return;
+  var s=exprInput.value.trim();
+  if(!s){hintEl.textContent='Enter a function first!';hintEl.className='hint err';return;}
+  if(mode==='mp'){
+    var me=tanks[turnIdx];
+    if(!me||!me.mine)return;
+    if(mp.isHost){
+      try{anchoredPoints(s,me,shotDir);}
+      catch(e){hintEl.textContent='✗ '+e.message;hintEl.className='hint err';return;}
+      mpSendAll({t:'shot',pid:me.id,expr:s,dir:shotDir});
+      fireShot(me,s,shotDir);
+    }else{
+      mpSendUp({t:'shoot',from:mp.myId,expr:s,dir:shotDir});
+      phase='wait'; setFireEnabled(false);
+      banner('📡 Shot away!');
+    }
+    return;
+  }
+  try{fireShot(tanks[turnIdx],s,shotDir);}
+  catch(e){hintEl.textContent='✗ '+e.message;hintEl.className='hint err';}
+}
+function addLog(tank,expr){
+  var div=document.createElement('div');
+  var who=tank.isPlayer?'<span class="me"><b>You</b></span>':'<b>'+escapeHtml(tank.name)+'</b>';
+  div.innerHTML=who+' fired f(x) = '+escapeHtml(expr);
+  logEl.insertBefore(div,logEl.firstChild);
+  while(logEl.children.length>6)logEl.removeChild(logEl.lastChild);
+}
+var PRESETS=['x','x^2','-x^2+6','3*sin(x)','0.1*x^3','e^x','-e^x','ln(x)','-ln(x)'];
+function buildChips(){
+  var box=document.getElementById('chips');
+  PRESETS.forEach(function(p){
+    var b=document.createElement('button');
+    b.className='chip'; b.textContent='f(x)='+p;
+    b.addEventListener('click',function(){
+      if(phase!=='aim')return;
+      exprInput.value=p; updateHint();
+    });
+    box.appendChild(b);
+  });
+}
+/* ================= multiplayer: room codes over a central message broker =================
+   chess.com-style: every message goes through a public MQTT broker over a
+   secure WebSocket, so two homes on any networks can play — no peer-to-peer
+   NAT traversal needed. Host-authoritative, turn-based. The host simulates
+   nothing extra: every client animates each shot locally from
+   (shooter, expr, dir) — the flight is deterministic — and the host
+   broadcasts an authoritative snapshot after every turn so all clients
+   converge. */
+var mode='solo';
+var MP_PAL=['#22d3ee','#f472b6','#a3e635','#fbbf24','#c084fc','#fb923c'];
+var MP_BROKERS=['wss://broker.emqx.io:8084/mqtt','wss://broker.hivemq.com:8884/mqtt','wss://test.mosquitto.org:8081/mqtt'];
+var mp={mq:null,isHost:false,room:'',myId:'',players:[],scores:{},started:false,
+        turnTimer:null,countTimer:null,countEnd:0};
+var mpModal=document.getElementById('mpModal');
+function genCode(){
+  var A='ABCDEFGHJKMNPQRSTUVWXYZ23456789', s='';
+  for(var i=0;i<5;i++)s+=A[Math.floor(Math.random()*A.length)];
+  return s;
+}
+function mpGenId(){return 'p'+Math.random().toString(36).slice(2,10);}
+function mpTopic(code,kind){return 'gb1/room/'+code+'/'+kind;}
+function mpStatus(msg,err){
+  var el=document.getElementById('mpStatus');
+  el.textContent=msg||''; el.className='hint '+(err?'err':'');
+}
+/* host -> everyone in the room */
+function mpSendAll(msg){
+  if(mp.mq){try{mp.mq.publish(mpTopic(mp.room,'bcast'),JSON.stringify(msg));}catch(e){}}
+}
+/* host -> one player (adds .to) */
+function mpSendTo(msg,to){msg.to=to;mpSendAll(msg);}
+/* client -> host */
+function mpSendUp(msg){
+  if(mp.mq){try{mp.mq.publish(mpTopic(mp.room,'up'),JSON.stringify(msg));}catch(e){}}
+}
+/* Connect to the message broker, trying each broker in turn.
+   opts: {will, onUp(d), onBcast(d), onConnect(client), onFail(kind)} */
+function mpConnect(opts){
+  if(typeof mqtt==='undefined'){opts.onFail('lib');return;}
+  var bi=0, gen=0;
+  function attempt(){
+    var g=++gen;
+    if(bi>=MP_BROKERS.length){opts.onFail('broker');return;}
+    var url=MP_BROKERS[bi++];
+    var c;
+    try{c=mqtt.connect(url,{connectTimeout:7000,reconnectPeriod:5000,will:opts.will});}
+    catch(e){attempt();return;}
+    var live=false;
+    c.on('connect',function(){
+      if(g!==gen)return;
+      live=true; mp.mq=c;
+      opts.onConnect(c);
+    });
+    c.on('message',function(topic,buf){
+      if(g!==gen||!live)return;
+      var d; try{d=JSON.parse(buf.toString());}catch(e){return;}
+      if(topic===mpTopic(mp.room,'up')){if(opts.onUp)opts.onUp(d);}
+      else if(opts.onBcast)opts.onBcast(d);
+    });
+    c.on('error',function(){});
+    setTimeout(function(){
+      if(g!==gen||live)return;
+      try{c.end(true);}catch(e){}
+      attempt();
+    },8000);
+  }
+  attempt();
+}
+function mpCreate(){
+  if(mode==='mp')return;
+  var name=(document.getElementById('mpName').value.trim()||'Player').slice(0,16);
+  var code=genCode();
+  mpStatus('Creating room…');
+  var myId=mpGenId();
+  mp.room=code; mp.myId=myId;
+  mpConnect({
+    will:{topic:mpTopic(code,'bcast'),payload:JSON.stringify({t:'hostgone'}),qos:0,retain:false},
+    onUp:function(d){mpHostData(d);},
+    onConnect:function(c){
+      c.subscribe(mpTopic(code,'up'),function(){mpBeHost(name,code);});
+    },
+    onFail:function(kind){
+      mp.room=''; mp.myId='';
+      mpStatus(kind==='lib'?'Network library failed to load — check your connection and reload.'
+                           :'Could not reach the game server — check your internet connection and try again.',1);
+    }
+  });
+}
+function mpBeHost(name,code){
+  mode='mp'; mp.isHost=true;
+  mp.players=[{id:mp.myId,name:name,color:MP_PAL[0],isBot:false}];
+  mp.scores={}; mp.started=false;
+  document.getElementById('mpBots').value='0';
+  document.body.classList.add('mp');
+  mpStatus('');
+  mpRenderPanel();
+  banner('👥 Room '+code+' created — share the code, then Start!');
+}
+function mpJoin(){
+  if(mode==='mp')return;
+  var code=document.getElementById('mpCode').value.trim().toUpperCase();
+  if(code.length<4){mpStatus('Enter the room code your friend shared.',1);return;}
+  var name=(document.getElementById('mpName').value.trim()||'Player').slice(0,16);
+  mpStatus('Joining '+code+'…');
+  var myId=mpGenId();
+  mp.room=code; mp.myId=myId;
+  var over=false;
+  function fail(msg){
+    if(over||mode==='mp')return; over=true;
+    if(mp.mq){try{mp.mq.end();}catch(e){} mp.mq=null;}
+    mp.room=''; mp.myId='';
+    mpStatus(msg,1);
+  }
+  function sendJoin(){if(!over&&mode!=='mp')mpSendUp({t:'join',from:myId,name:name});}
+  mpConnect({
+    will:{topic:mpTopic(code,'up'),payload:JSON.stringify({t:'bye',from:myId}),qos:0,retain:false},
+    onBcast:function(d){mpClientData(d);},
+    onConnect:function(c){
+      c.subscribe(mpTopic(code,'bcast'),function(){
+        sendJoin();
+        setTimeout(sendJoin,2500);
+        setTimeout(function(){
+          fail('Could not reach the room — check the code, and make sure your friend created the room and is on this page.');
+        },12000);
+      });
+    },
+    onFail:function(kind){
+      fail(kind==='lib'?'Network library failed to load — check your connection and reload.'
+                       :'Could not reach the game server — check your internet connection and try again.');
+    }
+  });
+}
+function mpSendAll(msg){
+  if(mp.mq){try{mp.mq.publish(mpTopic(mp.room,'bcast'),JSON.stringify(msg));}catch(e){}}
+}
+function mpHostData(d){
+  if(!d||typeof d!=='object')return;
+  if(d.t==='join'){
+    if(!d.from)return;
+    for(var i=0;i<mp.players.length;i++){
+      if(mp.players[i].id===d.from){
+        mpSendTo({t:'welcome',myId:d.from,players:mp.players},d.from);
+        return;
+      }
+    }
+    if(mp.started){mpSendTo({t:'denied',reason:'That game already started.'},d.from);return;}
+    if(mp.players.length>=6){mpSendTo({t:'denied',reason:'Room is full (6 max).'},d.from);return;}
+    var p={id:d.from,name:String(d.name||'Player').slice(0,16)||'Player',
+           color:MP_PAL[mp.players.length%MP_PAL.length],isBot:false};
+    mp.players.push(p);
+    mpSendTo({t:'welcome',myId:d.from,players:mp.players},d.from);
+    mpSendAll({t:'lobby',players:mp.players});
+    mpRenderPanel();
+    banner('👥 '+p.name+' joined the room!');
+    tone(600,940,0.16,'sine',0.08);
+  }else if(d.t==='shoot'){
+    var t=tanks[turnIdx];
+    if(mp.started&&t&&!t.isBot&&t.id===d.from&&!missile&&!gameOverFlag){
+      var expr=String(d.expr||'').slice(0,120), dir=d.dir>0?1:-1;
+      try{anchoredPoints(expr,t,dir);}catch(e){mpNextTurn();return;}
+      mpSendAll({t:'shot',pid:t.id,expr:expr,dir:dir});
+      fireShot(t,expr,dir);
+    }
+  }else if(d.t==='bye'){
+    if(d.from)mpHostClose(d.from);
+  }else if(d.t==='cheatdeath'){
+    var t=tankById(d.from);
+    if(t&&t.alive){
+      mpSendAll({t:'cheatdie',pid:t.id,name:t.name});
+      killTank(t,t.x,t.y);
+    }
+  }
+}
+function mpHostClose(id){
+  var gone=null;
+  mp.players=mp.players.filter(function(p){if(p.id===id)gone=p;return p.id!==id;});
+  if(gone&&mode==='mp')banner('👋 '+gone.name+' left the room.');
+  if(mode!=='mp')return;
+  if(!mp.started){mpSendAll({t:'lobby',players:mp.players});mpRenderPanel();return;}
+  var t=tankById(id);
+  if(t)t.alive=false;
+  if(!missile){
+    var alive=tanks.filter(function(x){return x.alive;});
+    if(alive.length<=1){mpAfterFlight();mpRenderPanel();return;}
+    if(tanks[turnIdx]&&tanks[turnIdx].id===id){mpNextTurn();mpRenderPanel();return;}
+  }
+  mpSendAll({t:'snap',tanks:tanks,blocks:blocks,turnIdx:turnIdx,scores:mp.scores});
+  mpRenderPanel();
+}
+function tankById(id){
+  for(var i=0;i<tanks.length;i++)if(tanks[i].id===id)return tanks[i];
+  return null;
+}
+function mpStartRound(){
+  roundSeq++;
+  mp.started=true;
+  var nb=parseInt(document.getElementById('mpBots').value,10)||0;
+  var ps=mp.players.slice();
+  for(var i=0;i<nb&&ps.length<6;i++){
+    var bd=BOT_DEFS[i%BOT_DEFS.length];
+    ps.push({id:'bot'+i+'r'+roundSeq,name:bd.name,color:bd.color,isBot:true});
+  }
+  tanks=ps.map(function(p){
+    return {id:p.id,name:p.name,color:p.color,x:0,y:0,alive:true,
+            isPlayer:p.id===mp.myId,isBot:!!p.isBot,mine:p.id===mp.myId};
+  });
+  /* random seating + random first shooter every round */
+  for(var si=tanks.length-1;si>0;si--){
+    var sj=Math.floor(Math.random()*(si+1)), tmp=tanks[si];
+    tanks[si]=tanks[sj]; tanks[sj]=tmp;
+  }
+  placeAll();
+  turnIdx=0; missile=null; particles=[]; gameOverFlag=false; missStreak=0;
+  exprInput.value=''; updateHint(); logEl.innerHTML='';
+  overlay.classList.add('hidden');
+  mpSendAll({t:'start',tanks:tanks,blocks:blocks,turnIdx:turnIdx,scores:mp.scores});
+  mpRenderScores(); mpTurnUI(); mpArmTurnTimer();
+}
+/* host: advance to the next living tank (note: optional skip announcement) */
+function mpNextTurn(note){
+  var n=tanks.length;
+  for(var k=1;k<=n;k++){var ix=(turnIdx+k)%n;if(tanks[ix].alive){turnIdx=ix;break;}}
+  gameOverFlag=false;
+  mpSendAll({t:'snap',tanks:tanks,blocks:blocks,turnIdx:turnIdx,scores:mp.scores,note:note||null});
+  mpTurnUI(note);
+  mpArmTurnTimer();
+}
+/* 3-minute turn timer (friend matches): host enforces, everyone sees a countdown.
+   On expiry the turn is skipped with a "didn't fire" announcement. */
+function mpArmTurnTimer(){
+  mpClearTurnTimer();
+  if(mode!=='mp'||!mp.isHost||!mp.started)return;
+  var seq=roundSeq, tank=tanks[turnIdx];
+  if(!tank||!tank.alive)return;
+  mp.turnTimer=setTimeout(function(){
+    mp.turnTimer=null;
+    if(mode!=='mp'||!mp.isHost||!mp.started||seq!==roundSeq)return;
+    if(missile||gameOverFlag||phase==='over')return;
+    var t=tanks[turnIdx];
+    if(!t||t!==tank||!t.alive)return;
+    mpSkipTurn(t);
+  },TURN_SECS*1000);
+}
+function mpClearTurnTimer(){
+  if(mp.turnTimer){clearTimeout(mp.turnTimer);mp.turnTimer=null;}
+}
+/* host: a player ran out the 3-minute clock — announce it and move to next turn */
+function mpSkipTurn(t){
+  missStreak++;
+  var note='⏰ '+t.name+" didn't fire in 3 minutes!";
+  tone(220,180,0.25,'square',0.08);
+  if(mpRoundShouldEnd())return;
+  mpNextTurn(note);
+}
+/* countdown chip shown to everyone during a friend-match turn */
+function mpShowCountdown(){
+  mpHideCountdown();
+  if(mode!=='mp'||!mp.started)return;
+  turnTimerEl.style.display='';
+  mp.countEnd=Date.now()+TURN_SECS*1000;
+  mpCountTick();
+}
+function mpCountTick(){
+  if(mode!=='mp'||!mp.started||missile||phase==='over'){mpHideCountdown();return;}
+  var s=Math.max(0,Math.ceil((mp.countEnd-Date.now())/1000));
+  turnTimerEl.textContent='⏰ '+Math.floor(s/60)+':'+('0'+(s%60)).slice(-2);
+  turnTimerEl.classList.toggle('low',s<=30);
+  mp.countTimer=setTimeout(mpCountTick,500);
+}
+function mpHideCountdown(){
+  if(mp.countTimer){clearTimeout(mp.countTimer);mp.countTimer=null;}
+  if(turnTimerEl)turnTimerEl.style.display='none';
+}
+/* host: called when a flight finishes */
+function mpAfterFlight(){
+  gameOverFlag=false;
+  missStreak++;
+  if(mpRoundShouldEnd())return;
+  mpNextTurn();
+}
+/* host: returns true when the round is over (last survivor or stalemate) */
+function mpRoundShouldEnd(){
+  var alive=tanks.filter(function(x){return x.alive;});
+  if(alive.length<=1||missStreak>=30){
+    var w=alive[0]||null, stalemate=missStreak>=30&&alive.length>1;
+    if(w&&!stalemate)mp.scores[w.id]=(mp.scores[w.id]||0)+1;
+    phase='over'; missile=null; setFireEnabled(false);
+    mpClearTurnTimer();
+    mpSendAll({t:'over',winner:w?w.id:null,stalemate:stalemate,scores:mp.scores,
+                      tanks:tanks,blocks:blocks});
+    mpRenderScores();
+    banner(stalemate?'🏁 Stalemate — new round soon…':
+           w?(w.mine?'🎉 You win the round!':'🏁 '+w.name+' wins the round!'):'🏁 Round over');
+    tone(523,523,0.12,'sine',0.1);
+    var seq=roundSeq;
+    setTimeout(function(){if(mode==='mp'&&mp.isHost&&seq===roundSeq)mpStartRound();},4500);
+    return true;
+  }
+  return false;
+}
+/* shared: update banner/input for whose turn it is (note: optional skip announcement) */
+function mpTurnUI(note){
+  var t=tanks[turnIdx];
+  exprInput.value=''; updateHint();
+  mpShowCountdown();
+  var mine=!!(t&&t.mine);
+  phase=mine?'aim':'wait';
+  setFireEnabled(mine);
+  if(!t)return;
+  var msg;
+  if(mine)msg='🎯 Your turn — build a function and fire!';
+  else if(t.isBot)msg='🤖 '+t.name+' is aiming…';
+  else msg='👤 '+t.name+' is aiming…';
+  banner(note?note+' '+msg:msg);
+  if(t.isBot&&mp.isHost&&mode==='mp'){
+    var seq=roundSeq, bt=t;
+    setTimeout(function(){
+      if(mode!=='mp'||!mp.isHost||seq!==roundSeq)return;
+      if(!bt.alive||tanks[turnIdx]!==bt||missile)return;
+      var c=botChoose(bt);
+      mpSendAll({t:'shot',pid:bt.id,expr:c.expr,dir:c.dir});
+      try{fireShot(bt,c.expr,c.dir);}catch(e){mpNextTurn();}
+    },1300);
+  }
+}
+function mpClientData(d){
+  if(!d||typeof d!=='object')return;
+  if(d.to&&d.to!==mp.myId)return;
+  if(d.t==='welcome'){
+    mode='mp'; mp.isHost=false; mp.myId=d.myId; mp.players=d.players||[];
+    mp.scores={}; mpStatus('');
+    document.body.classList.add('mp');
+    mpRenderPanel();
+  }else if(d.t==='denied'){
+    mpStatus(d.reason||'Could not join.',1);
+    if(mp.mq){try{mp.mq.end();}catch(e){} mp.mq=null;}
+    mp.room=''; mp.myId='';
+  }else if(d.t==='lobby'){
+    var had=(mp.players||[]).length;
+    mp.players=d.players||[]; mpRenderPanel();
+    if(mp.players.length>had&&had>0){
+      var np=mp.players[mp.players.length-1];
+      banner('👥 '+np.name+' joined the room!');
+      tone(600,940,0.16,'sine',0.08);
+    }
+  }else if(d.t==='start'){
+    tanks=(d.tanks||[]).map(mpFixTank); blocks=d.blocks||[]; turnIdx=d.turnIdx||0;
+    mp.scores=d.scores||{}; missile=null; particles=[]; gameOverFlag=false; missStreak=0;
+    mp.started=true;
+    exprInput.value=''; logEl.innerHTML=''; overlay.classList.add('hidden');
+    updateHint(); mpRenderScores(); mpTurnUI(); mpRenderPanel();
+  }else if(d.t==='shot'){
+    var t=tankById(d.pid);
+    if(t){phase='flying'; setFireEnabled(false);
+      try{fireShot(t,String(d.expr).slice(0,120),d.dir>0?1:-1);}catch(e){}}
+  }else if(d.t==='cheatdie'){
+    var t2=tankById(d.pid);
+    if(t2&&t2.alive){
+      banner('😈 '+String(d.name||'Someone')+' tried to cheat! They\'re out!');
+      killTank(t2,t2.x,t2.y);
+    }
+  }else if(d.t==='snap'){
+    tanks=(d.tanks||[]).map(mpFixTank); blocks=d.blocks||[]; turnIdx=d.turnIdx||0;
+    mp.scores=d.scores||{}; gameOverFlag=false;
+    mpRenderScores(); mpTurnUI(d.note||null);
+    if(d.note)tone(220,180,0.25,'square',0.06);
+  }else if(d.t==='over'){
+    if(d.tanks)tanks=d.tanks.map(mpFixTank);
+    if(d.blocks)blocks=d.blocks;
+    mp.scores=d.scores||{}; phase='over'; missile=null; setFireEnabled(false);
+    mpRenderScores(); mpRenderPanel();
+    var w=d.winner?tankById(d.winner):null;
+    banner(d.stalemate?'🏁 Stalemate — new round soon…':
+           w?(w.mine?'🎉 You win the round!':'🏁 '+w.name+' wins the round!'):'🏁 Round over');
+    tone(523,523,0.12,'sine',0.1);
+  }else if(d.t==='hostgone'){
+    if(mode==='mp'&&!mp.isHost)mpDropped('The host left the room.');
+  }
+}
+function mpFixTank(t){t.mine=(t.id===mp.myId);t.isPlayer=t.mine;return t;}
+function mpDropped(msg){
+  if(mode!=='mp')return;
+  mpCleanup();
+  banner('⚠️ '+msg+' Back to solo play.');
+  newRound();
+}
+function mpLeave(){
+  if(mode==='mp'){
+    if(mp.isHost)mpSendAll({t:'hostgone'});
+    else mpSendUp({t:'bye',from:mp.myId});
+  }
+  mpCleanup();
+  mpModal.classList.add('hidden');
+  banner('👋 Left the room.');
+  newRound();
+}
+function mpCleanup(){
+  if(mp.mq){try{mp.mq.end();}catch(e){} mp.mq=null;}
+  mode='solo';
+  mp.isHost=false;
+  mpClearTurnTimer(); mpHideCountdown();
+  mp.players=[]; mp.scores={}; mp.started=false; mp.room=''; mp.myId='';
+  document.body.classList.remove('mp');
+  mpRenderScores();
+}
+function mpRenderPanel(){
+  var inRoom=mode==='mp';
+  document.getElementById('mpMenu').classList.toggle('hidden',inRoom);
+  document.getElementById('mpLobby').classList.toggle('hidden',!inRoom);
+  if(!inRoom)return;
+  document.getElementById('mpRoomCode').textContent=mp.room||'-----';
+  document.getElementById('mpHostCtl').classList.toggle('hidden',!mp.isHost||mp.started);
+  var box=document.getElementById('mpPlayers'); box.innerHTML='';
+  mp.players.forEach(function(p){
+    var div=document.createElement('div'); div.className='mp-player';
+    div.innerHTML='<span class="mp-dot" style="background:'+p.color+'"></span><span>'+
+      escapeHtml(p.name)+'</span>'+(p.id===mp.myId?'<span style="color:var(--dim)">(you)</span>':'')+
+      (p.isBot?'<span>🤖</span>':'');
+    box.appendChild(div);
+  });
+}
+function mpRenderScores(){
+  var el=document.getElementById('scoreLine');
+  if(mode!=='mp'){
+    el.innerHTML='You <b id="scoreYou">0</b> &middot; Bots <b id="scoreBot">0</b>';
+    scoreYouEl=document.getElementById('scoreYou');
+    scoreBotEl=document.getElementById('scoreBot');
+    scoreYouEl.textContent=scoreYou; scoreBotEl.textContent=scoreBot;
+    return;
+  }
+  el.innerHTML=mp.players.map(function(p){
+    return '<span style="color:'+p.color+'">'+escapeHtml(p.name)+'</span> <b>'+(mp.scores[p.id]||0)+'</b>';
+  }).join(' &middot; ')||'—';
+}
+document.addEventListener('keydown',function(e){
+  if(!howModal.classList.contains('hidden')){
+    if(e.key==='Escape')howModal.classList.add('hidden');
+    return;
+  }
+  if(!mpModal.classList.contains('hidden')){
+    if(e.key==='Escape')mpModal.classList.add('hidden');
+    return;
+  }
+  if(phase!=='aim')return;
+  var k=e.key;
+  /* typing directly in the box: native caret/selection editing, Enter fires */
+  if(e.target===exprInput){
+    if(k==='Enter'){doFire();e.preventDefault();}
+    return;
+  }
+  if(k==='Enter'){doFire();e.preventDefault();return;}
+  if(k==='Backspace'){backspace();e.preventDefault();return;}
+  if(k==='Escape'){clearExpr();return;}
+  var map={'*':'*','/':'/','^':'^','+':'+','-':'-','(':'(',')':')','x':'x','X':'x','.':'.','p':'π','P':'π','e':'e','E':'e'};
+  if((k>='0'&&k<='9'&&k.length===1)||map[k]!==undefined){
+    insertText(map[k]!==undefined?map[k]:k);
+    e.preventDefault();
+  }
+});
+exprInput.addEventListener('input',updateHint);
+fireBtn.addEventListener('click',doFire);
+/* ================= cheat: guaranteed double kill =================
+   Full-graph model: the left branch (x<tank.x) and right branch (x>tank.x) of
+   the graph are independent. Using (x-abs(x))/2 (zero for x>0) and
+   (x+abs(x))/2 (zero for x<0), each branch can be shaped separately:
+   - foes on opposite sides: piecewise curve, each branch threads its own foe
+     (with an adjustable bulge A*v*(v-u) to dodge walls, still exact at the foe)
+   - foes on the same side: parabola / lifted cubic / highway through both
+   Every candidate is simulated with the real burn (walls included). */
+function cheatLoad(){
+  if(mode==='mp'){
+    /* TRAP: clicking cheat in friend mode = instant loss! */
+    var myTank=null, i;
+    for(i=0;i<tanks.length;i++)if(tanks[i].mine){myTank=tanks[i];break;}
+    if(!myTank||!myTank.alive)return;
+    var tname=myTank.name||'You';
+    if(mp.isHost){
+      banner('😈 '+tname+' tried to cheat! They\'re out!');
+      mpSendAll({t:'cheatdie',pid:myTank.id,name:tname});
+      killTank(myTank,myTank.x,myTank.y);
+    }else{
+      mpSendUp({t:'cheatdeath',from:mp.myId});
+      banner('😈 You tried to cheat! You\'re out!');
+      killTank(myTank,myTank.x,myTank.y);
+    }
+    tone(160,30,0.5,'square',0.2);
+    return;
+  }
+  if(phase!=='aim')return;
+  var me=tanks[turnIdx];
+  if(!me||!me.alive)return;
+  var foes=tanks.filter(function(x){return x.alive&&x!==me&&Math.abs(x.x-me.x)>0.5;});
+  if(foes.length<2){
+    hintEl.textContent='😈 Need at least 2 foes to cheat on!';
+    hintEl.className='hint err';return;
+  }
+  var left=[], right=[], i;
+  for(i=0;i<foes.length;i++){
+    var f=foes[i], u=f.x-me.x;
+    (u<0?left:right).push({f:f,u:u,w:f.y-me.y,
+      d:Math.abs(u)+Math.abs(f.y-me.y)});
+  }
+  left.sort(function(a,b){return a.d-b.d;});
+  right.sort(function(a,b){return a.d-b.d;});
+  var best=null;
+  /* directional: try each side separately, the ray only fires one way */
+  function consider(expr,dir){
+    if(!expr)return false;
+    var r=simRay(me,expr,dir,foes);
+    var score=r.kills*2-(r.self?1:0);
+    if(!best||score>best.score)best={expr:expr,dir:dir,kills:r.kills,self:r.self,score:score};
+    if(r.kills>=2&&!r.self)return true;
+    /* targeted repair: blocked by a wall? bump over/under it and retry */
+    if(r.blockX!==null&&r.kills<2){
+      var bx=r.blockX-me.x;
+      var Hs=[4,-4,7,-7];
+      for(var hi=0;hi<Hs.length;hi++){
+        var fixed=expr+spikeTerm(Hs[hi],bx,'1.5');
+        var r2=simRay(me,fixed,dir,foes);
+        var s2=r2.kills*2-(r2.self?1:0);
+        if(!best||s2>best.score)best={expr:fixed,dir:dir,kills:r2.kills,self:r2.self,score:s2};
+        if(r2.kills>=2&&!r2.self)return true;
+      }
+    }
+    return false;
+  }
+  /* For each direction, try pairs of foes on that side */
+  var sides=[{list:left,dir:-1},{list:right,dir:1}];
+  for(var si=0;si<sides.length;si++){
+    var side=sides[si], dir=side.dir, list=side.list;
+    if(list.length<2)continue;
+    if(best&&best.kills>=2&&!best.self)break;
+    var pairs=[], a, b;
+    for(a=0;a<list.length;a++)for(b=0;b<list.length;b++){
+      if(a===b)continue;
+      pairs.push({F1:list[a],F2:list[b],d:list[a].d+list[b].d});
+    }
+    pairs.sort(function(p,q){return p.d-q.d;});
+    for(var pi=0;pi<pairs.length;pi++){
+      var F1=pairs[pi].F1, F2=pairs[pi].F2;
+      var u1=F1.u, w1=F1.w, u2=F2.u, w2=F2.w;
+      if(consider(cheatLineSpike(w1/u1,w2-(w1/u1)*u2,u2),dir))break;
+      var pe=cheatParabola(u1,w1,u2,w2);
+      if(pe&&consider(pe,dir))break;
+      var pw=cheatPower(u1,w1,u2,w2);
+      if(pw&&consider(pw,dir))break;
+      var Ls=[];
+      for(var lvi=-10;lvi<=10;lvi++)Ls.push(lvi*0.01);
+      var done=false;
+      for(var li=0;li<Ls.length;li++){
+        var ce=cheatCubic(u1,w1,u2,w2,Ls[li]);
+        if(ce&&consider(ce,dir)){done=true;break;}
+      }
+      if(done)break;
+      if(Math.abs(u1-u2)>3){
+        var hwT=cheatHighway(9.5-me.y,u1,w1,u2,w2);
+        if(hwT&&consider(hwT,dir))break;
+        var hwB=cheatHighway(-9.5-me.y,u1,w1,u2,w2);
+        if(hwB&&consider(hwB,dir))break;
+      }
+    }
+  }
+  if(!best||best.kills===0){
+    hintEl.textContent='😈 No clean cheat shot found!';
+    hintEl.className='hint err';return;
+  }
+  setDir(best.dir);
+  exprInput.value=best.expr;
+  try{exprInput.selectionStart=exprInput.selectionEnd=best.expr.length;}catch(e){}
+  updateHint();
+  hintEl.textContent='😈 Cheat loaded — hits '+best.kills+' foe'+(best.kills>1?'s':'')+
+    (best.self?' (careful: it swings back by you too!)':'')+'. Hit Fire!';
+  hintEl.className='hint ok';
+  tone(220,880,0.18,'sawtooth',0.07);
+}
+/* Piecewise: left branch threads (u1,w1) with bulge A1, right branch threads
+   (u2,w2) with bulge A2. vL=(x-abs(x))/2 is x for x<0 else 0; vR mirrors. */
+function cheatSplit(L,R,A1,A2){
+  var m1=L.w/L.u, m2=R.w/R.u;
+  var vL='((x-abs(x))/2)', vR='((x+abs(x))/2)';
+  var e=r2(m1)+'*'+vL+' + '+r2(m2)+'*'+vR;
+  if(Math.abs(A1)>=0.005){
+    e+=(A1<0?' - ':' + ')+r2(Math.abs(A1))+'*'+vL+'*('+vL+'-('+r2(L.u)+'))';
+  }
+  if(Math.abs(A2)>=0.005){
+    e+=(A2<0?' - ':' + ')+r2(Math.abs(A2))+'*'+vR+'*('+vR+'-('+r2(R.u)+'))';
+  }
+  return e;
+}
+/* f(x) = m*x + H*e^(-((x-u2)^2)/0.08): line through foe 1, narrow spike to foe 2 */
+function cheatLineSpike(m,H,u2){
+  return r2(m)+'*x'+spikeTerm(H,u2,'0.08');
+}
+/* Gaussian spike term: C*e^(-((x-u)^2)/w), formatted for the parser */
+function spikeTerm(C,u,w){
+  if(Math.abs(C)<0.005||!isFinite(C))return '';
+  var inner='(x'+(u<0?'+':'-')+r2(Math.abs(u))+')';
+  return (C<0?' - ':' + ')+r2(Math.abs(C))+'*e^(-(('+inner+'^2))/'+w+')';
+}
+/* Power curve through (0,0), (u1,w1), (u2,w2): f(x)=w1*(x/u1)^n with
+   n=ln(w2/w1)/ln(u2/u1). Stays flat then rises steeply — ducks under walls. */
+function cheatPower(u1,w1,u2,w2){
+  if(w1===0||w2===0)return null;
+  if((w1<0)!==(w2<0))return null;
+  if((u1<0)!==(u2<0))return null;
+  if(Math.abs(u1-u2)<1e-6||Math.abs(u1)<1e-6)return null;
+  var n=Math.log(Math.abs(w2/w1))/Math.log(Math.abs(u2/u1));
+  if(!isFinite(n)||n<0.3||n>8)return null;
+  var xv=u1<0?'(-x/'+r2(Math.abs(u1))+')':'(x/'+r2(u1)+')';
+  return r2(w1)+'*'+xv+'^'+r2(n);
+}
+function cheatParabolaCoef(u1,w1,u2,w2){
+  if(Math.abs(u1)<1e-6||Math.abs(u2)<1e-6||Math.abs(u1-u2)<1e-6)return null;
+  var a=(w2*u1-w1*u2)/(u1*u2*(u2-u1));
+  var b=(w1-a*u1*u1)/u1;
+  if(!isFinite(a)||!isFinite(b))return null;
+  return {a:a,b:b};
+}
+/* f(x) = a*x^2 + b*x through (0,0), (u1,w1), (u2,w2) */
+function cheatParabola(u1,w1,u2,w2){
+  var c=cheatParabolaCoef(u1,w1,u2,w2);
+  if(!c)return null;
+  var e='';
+  if(Math.abs(c.a)>=0.0005)e+=(c.a<0?'-':'')+r2(Math.abs(c.a))+'*x^2';
+  if(Math.abs(c.b)>=0.0005)e+=(c.b<0?(e?' - ':'-'):(e?' + ':''))+r2(Math.abs(c.b))+'*x';
+  return e||'0';
+}
+/* f(x) = parabola + L*x*(x-u1)*(x-u2): still hits both foes, L bulges the
+   curve up/down between them to dodge walls. */
+function cheatCubic(u1,w1,u2,w2,L){
+  var c=cheatParabolaCoef(u1,w1,u2,w2);
+  if(!c)return null;
+  var c3=L, c2=c.a-L*(u1+u2), c1=c.b+L*u1*u2;
+  if(!isFinite(c3)||!isFinite(c2)||!isFinite(c1))return null;
+  var e='';
+  if(Math.abs(c3)>=0.0005)e+=(c3<0?'-':'')+r2(Math.abs(c3))+'*x^3';
+  if(Math.abs(c2)>=0.0005)e+=(c2<0?(e?' - ':'-'):(e?' + ':''))+r2(Math.abs(c2))+'*x^2';
+  if(Math.abs(c1)>=0.0005)e+=(c1<0?(e?' - ':'-'):(e?' + ':''))+r2(Math.abs(c1))+'*x';
+  return e||'0';
+}
+/* "Highway in the sky": travel at y=±9.5 (above/below all walls), dip down to
+   each foe with a narrow Gaussian. f(x)=H*(1-e^(-x^2))-(H-w1)*g1-(H-w2)*g2. */
+function cheatHighway(H,u1,w1,u2,w2){
+  if(!isFinite(H)||Math.abs(H)<1)return null;
+  var g0=function(x){return Math.exp(-x*x);};
+  var C1=H*(1-g0(u1))-w1, C2=H*(1-g0(u2))-w2;
+  return r2(H)+'*(1-e^(-(x^2)))'+spikeTerm(-C1,u1,'0.3')+spikeTerm(-C2,u2,'0.3');
+}
+/* head-simulation: how many foes would this full-graph shot kill? does it swing back at me?
+   Also returns blockX/blockY: where the burn hit a wall (for targeted repair). */
+function simRay(me,expr,dir,foes){
+  /* directional ray sim for the cheat */
+  var res={kills:0,self:false,blockX:null,blockY:null};
+  var ap;
+  try{ap=anchoredPoints(expr,me,dir);}catch(e){return res;}
+  var be=burnEnd(ap.pts,ap.start);
+  if(be.kind==='block'&&ap.pts[be.end]){res.blockX=ap.pts[be.end].x;res.blockY=ap.pts[be.end].y;}
+  var hit=[];
+  for(var j=0;j<foes.length;j++)hit.push(false);
+  for(var i=ap.start;i<=be.end;i++){
+    var p=ap.pts[i]; if(!p)continue;
+    if(i-ap.start>200){
+      var sx=p.x-me.x, sy=p.y-me.y;
+      if(sx*sx+sy*sy<HIT_R*HIT_R)res.self=true;
+    }
+    for(var j=0;j<foes.length;j++){
+      if(hit[j])continue;
+      var f=foes[j], ex=p.x-f.x, ey=p.y-f.y;
+      if(ex*ex+ey*ey<HIT_R*HIT_R)hit[j]=true;
+    }
+  }
+  for(var j=0;j<hit.length;j++)if(hit[j])res.kills++;
+  return res;
+}
+document.getElementById('cheatBtn').addEventListener('click',cheatLoad);
+document.getElementById('dirL').addEventListener('click',function(){setDir(-1);});
+document.getElementById('dirR').addEventListener('click',function(){setDir(1);});
+document.getElementById('newBtn').addEventListener('click',newRound);
+document.getElementById('againBtn').addEventListener('click',newRound);
+document.getElementById('howBtn').addEventListener('click',function(){howModal.classList.remove('hidden');});
+document.getElementById('mpBtn').addEventListener('click',function(){mpRenderPanel();mpModal.classList.remove('hidden');});
+document.getElementById('mpClose').addEventListener('click',function(){mpModal.classList.add('hidden');});
+document.getElementById('mpCreate').addEventListener('click',mpCreate);
+document.getElementById('mpJoin').addEventListener('click',mpJoin);
+document.getElementById('mpLeave').addEventListener('click',mpLeave);
+document.getElementById('mpStart').addEventListener('click',function(){
+  if(mode==='mp'&&mp.isHost){mp.started=true;mpStartRound();mpRenderPanel();}
+});
+document.getElementById('closeHow').addEventListener('click',function(){howModal.classList.add('hidden');});
+howModal.addEventListener('click',function(e){if(e.target===howModal)howModal.classList.add('hidden');});
+document.getElementById('soundBtn').addEventListener('click',function(){
+  muted=!muted;
+  this.textContent=muted?'🔇':'🔊';
+});
+oppSel.addEventListener('change',newRound);
+/* ================= main loop & init ================= */
+function frame(ts){
+  var dt=Math.min(0.05,((ts-lastTime)/1000)||0.016);
+  lastTime=ts;
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+buildKeypad();
+buildChips();
+resize();
+newRound();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
